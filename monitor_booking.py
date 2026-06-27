@@ -20,7 +20,7 @@ import requests
 
 # ============== CONFIG ==============
 BASE_URL = "https://crystalsports-booking.kegroup.co.th/"
-DAYS_AHEAD = 16 
+DAYS_AHEAD = 15
 
 # Force Thailand Timezone (UTC+7) so GitHub Actions doesn't use yesterday's date
 TZ_THAI = timezone(timedelta(hours=7))
