@@ -1,0 +1,48 @@
+name: Crystal Sports Booking Monitor
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'   # every 5 minutes (GitHub's minimum interval)
+  workflow_dispatch: {}      # lets you also trigger it manually from the Actions tab
+
+jobs:
+  check-availability:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      # Persist known_free_slots.json between runs (Actions runners are
+      # otherwise a fresh machine every time, so without this we'd
+      # "forget" what was already free and could re-alert or miss things).
+      - name: Restore state cache
+        uses: actions/cache@v4
+        with:
+          path: known_free_slots.json
+          key: booking-state-${{ github.run_id }}
+          restore-keys: |
+            booking-state-
+
+      - name: Run monitor
+        env:
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          BOOKING_COOKIES_JSON: ${{ secrets.BOOKING_COOKIES_JSON }}
+        run: python monitor_booking.py
+
+      - name: Save state cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: known_free_slots.json
+          key: booking-state-${{ github.run_id }}
