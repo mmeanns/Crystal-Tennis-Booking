@@ -46,3 +46,4 @@ jobs:
         with:
           path: known_free_slots.json
           key: booking-state-${{ github.run_id }}
+
