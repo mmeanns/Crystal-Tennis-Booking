@@ -13,14 +13,17 @@ import json
 import os
 import smtplib
 import ssl
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone  # Added timezone here
 from email.mime.text import MIMEText
 
 import requests
 
 # ============== CONFIG ==============
 BASE_URL = "https://crystalsports-booking.kegroup.co.th/"
-DAYS_AHEAD = 16
+DAYS_AHEAD = 16 
+
+# Force Thailand Timezone (UTC+7) so GitHub Actions doesn't use yesterday's date
+TZ_THAI = timezone(timedelta(hours=7))
 
 # Optional login cookie, as a JSON string env var, e.g. {"PHPSESSID": "abc"}
 COOKIES = json.loads(os.environ.get("BOOKING_COOKIES_JSON") or "{}")
@@ -81,7 +84,8 @@ def collect_free_slots():
     locations = get_locations()
     stadiums = get_stadiums()
 
-    now = datetime.now()
+    # CRITICAL FIX: Explicitly use Thailand time instead of GitHub server time
+    now = datetime.now(TZ_THAI)
     today_str = now.strftime("%Y-%m-%d")
     now_hour_str = now.strftime("%H:00")
 
@@ -169,7 +173,8 @@ def send_push(title, message):
 
 
 def main():
-    print(f"[{datetime.now()}] Checking availability...")
+    # Show log timestamp in Thailand time
+    print(f"[{datetime.now(TZ_THAI)}] Checking availability...")
 
     try:
         current_free = collect_free_slots()
@@ -195,7 +200,7 @@ def main():
         for date_str in sorted(grouped_slots.keys()):
             slots_in_day = grouped_slots[date_str]
             
-            # CRITICAL FIX: Sort the slots strictly by the time element (index 0 of the tuple)
+            # Sort the slots strictly by the time element
             slots_in_day.sort(key=lambda x: x[0])
             
             try:
