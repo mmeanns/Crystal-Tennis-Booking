@@ -177,17 +177,45 @@ def main():
         print(f"[error] Could not fetch availability: {e}")
         return
 
-    # Check if there are any available slots at all
     if current_free:
-        lines = [current_free[k] for k in sorted(current_free.keys())]
-        body = f"All Available Slot(s) ({len(current_free)} total):\n\n" + "\n".join(lines)
+        # Step 1: Group the flat dictionary by date
+        grouped_slots = {}
+        for key in sorted(current_free.keys()):
+            parts = key.split("|")
+            if len(parts) == 4:
+                date_str, loc_name, stadium_name, time_name = parts
+                if date_str not in grouped_slots:
+                    grouped_slots[date_str] = []
+                
+                # Format how you want individual slots to appear under the header
+                slot_info = f"{time_name} — {loc_name} ({stadium_name})"
+                grouped_slots[date_str].append(slot_info)
+
+        # Step 2: Build the clean output text block
+        body_lines = ["All Available Slots:\n"]
+        for date_str, slots in sorted(grouped_slots.items()):
+            try:
+                # Convert date string to day name (e.g., "Monday")
+                date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+                day_of_week = date_obj.strftime("%A")
+            except Exception:
+                day_of_week = "Unknown Day"
+            
+            # Print the header: Date - Day of the week
+            body_lines.append(f"{date_str} - {day_of_week}")
+            # Print the bullet points underneath
+            for slot in slots:
+                body_lines.append(f"- {slot}")
+            body_lines.append("") # Inserts an empty line between dates for visual spacing
+
+        body = "\n".join(body_lines)
+        
         print(body)
         send_email("Crystal Sports: available slots!", body)
-        send_push("Crystal Sports slots free!", "\n".join(lines)[:1000])
+        send_push("Crystal Sports slots free!", body[:1000])
     else:
         print("[info] No slots available at all.")
 
-    # Keeping this so the JSON state file stays updated for history/debugging if needed
     save_state(current_free)
 
 
