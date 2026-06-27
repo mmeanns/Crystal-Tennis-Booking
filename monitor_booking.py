@@ -23,7 +23,7 @@ BASE_URL = "https://crystalsports-booking.kegroup.co.th/"
 DAYS_AHEAD = 14
 
 # Optional login cookie, as a JSON string env var, e.g. {"PHPSESSID": "abc"}
-COOKIES = json.loads(os.environ.get("BOOKING_COOKIES_JSON", "{}"))
+COOKIES = json.loads(os.environ.get("BOOKING_COOKIES_JSON") or "{}")
 
 EMAIL_ENABLED = True
 SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
