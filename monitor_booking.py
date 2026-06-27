@@ -177,23 +177,19 @@ def main():
         print(f"[error] Could not fetch availability: {e}")
         return
 
-    previous_free = load_previous_state()
-    newly_free_keys = set(current_free.keys()) - set(previous_free.keys())
-
-    if newly_free_keys and previous_free:
-        lines = [current_free[k] for k in sorted(newly_free_keys)]
-        body = "New free slot(s) found:\n\n" + "\n".join(lines)
+    # Check if there are any available slots at all
+    if current_free:
+        lines = [current_free[k] for k in sorted(current_free.keys())]
+        body = f"All Available Slot(s) ({len(current_free)} total):\n\n" + "\n".join(lines)
         print(body)
-        send_email("Crystal Sports: new slot available!", body)
-        send_push("Crystal Sports slot free!", "\n".join(lines)[:1000])
-    elif not previous_free:
-        print(f"[info] First run \u2014 recorded {len(current_free)} free slot(s) as baseline. No alert sent.")
+        send_email("Crystal Sports: available slots!", body)
+        send_push("Crystal Sports slots free!", "\n".join(lines)[:1000])
     else:
-        print("[info] No new slots since last check.")
+        print("[info] No slots available at all.")
 
+    # Keeping this so the JSON state file stays updated for history/debugging if needed
     save_state(current_free)
 
 
 if __name__ == "__main__":
     main()
-
