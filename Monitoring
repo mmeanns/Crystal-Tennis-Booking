@@ -1,5 +1,0 @@
-your-repo/
-├── monitor_booking.py
-├── .github/
-│   └── workflows/
-│       └── monitor.yml
