@@ -20,7 +20,7 @@ import requests
 
 # ============== CONFIG ==============
 BASE_URL = "https://crystalsports-booking.kegroup.co.th/"
-DAYS_AHEAD = 14
+DAYS_AHEAD = 16
 
 # Optional login cookie, as a JSON string env var, e.g. {"PHPSESSID": "abc"}
 COOKIES = json.loads(os.environ.get("BOOKING_COOKIES_JSON") or "{}")
