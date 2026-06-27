@@ -5,25 +5,31 @@ on:
     branches: [main]
   schedule:
     - cron: '*/15 * * * *'   # every 15 minutes
+permissions:
+  actions: write   # required to delete the old cache entry
 jobs:
   check-availability:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.x'
+
       - name: Install dependencies
         run: pip install requests
+
       - name: Restore state cache
         uses: actions/cache@v4
         with:
           path: known_free_slots.json
-          key: booking-state-${{ github.run_id }}
+          key: booking-state
           restore-keys: |
             booking-state-
+
       - name: Run monitor
         env:
           SMTP_USER: ${{ secrets.SMTP_USER }}
@@ -32,9 +38,16 @@ jobs:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           BOOKING_COOKIES_JSON: ${{ secrets.BOOKING_COOKIES_JSON }}
         run: python monitor_booking.py
+
+      - name: Delete old cache entry
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh cache delete booking-state || true
+
       - name: Save state cache
         if: always()
         uses: actions/cache/save@v4
         with:
           path: known_free_slots.json
-          key: booking-state-${{ github.run_id }}
+          key: booking-state
