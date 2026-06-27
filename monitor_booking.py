@@ -178,35 +178,37 @@ def main():
         return
 
     if current_free:
-        # Step 1: Group the flat dictionary by date
+        # Step 1: Group the data by date, storing tuples of (time, display_string)
         grouped_slots = {}
-        for key in sorted(current_free.keys()):
+        for key in current_free.keys():
             parts = key.split("|")
             if len(parts) == 4:
                 date_str, loc_name, stadium_name, time_name = parts
                 if date_str not in grouped_slots:
                     grouped_slots[date_str] = []
                 
-                # Format how you want individual slots to appear under the header
                 slot_info = f"{time_name} — {loc_name} ({stadium_name})"
-                grouped_slots[date_str].append(slot_info)
+                grouped_slots[date_str].append((time_name, slot_info))
 
-        # Step 2: Build the clean output text block
+        # Step 2: Build the text block chronologically
         body_lines = ["All Available Slots:\n"]
-        for date_str, slots in sorted(grouped_slots.items()):
+        for date_str in sorted(grouped_slots.keys()):
+            slots_in_day = grouped_slots[date_str]
+            
+            # CRITICAL FIX: Sort the slots strictly by the time element (index 0 of the tuple)
+            slots_in_day.sort(key=lambda x: x[0])
+            
             try:
-                # Convert date string to day name (e.g., "Monday")
                 date_obj = datetime.strptime(date_str, "%Y-%m-%d")
                 day_of_week = date_obj.strftime("%A")
             except Exception:
                 day_of_week = "Unknown Day"
             
-            # Print the header: Date - Day of the week
             body_lines.append(f"{date_str} - {day_of_week}")
-            # Print the bullet points underneath
-            for slot in slots:
-                body_lines.append(f"- {slot}")
-            body_lines.append("") # Inserts an empty line between dates for visual spacing
+            
+            for time_name, slot_info in slots_in_day:
+                body_lines.append(f"- {slot_info}")
+            body_lines.append("") # Spacer between different dates
 
         body = "\n".join(body_lines)
         
