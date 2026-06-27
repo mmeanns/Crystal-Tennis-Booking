@@ -38,7 +38,7 @@ jobs:
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           BOOKING_COOKIES_JSON: ${{ secrets.BOOKING_COOKIES_JSON }}
-        run: python monitor_booking.py
+        run: python debug_check.py
 
       - name: Save state cache
         if: always()
