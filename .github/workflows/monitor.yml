@@ -6,6 +6,7 @@ on:
   schedule:
     - cron: '*/15 * * * *'   # every 15 minutes
 permissions:
+  contents: read
   actions: write   # required to delete the old cache entry
 jobs:
   check-availability:
