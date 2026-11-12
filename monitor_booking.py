@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Crystal Sports court-availability monitor — GitHub Actions version.
-Scans today + next 14 days by fetching the server-rendered booking pages.
+Scans today + next 14 days using correct location IDs (LOC001, LOC002).
 """
 
 import json
@@ -45,9 +45,10 @@ session.headers.update({
 if COOKIES:
     session.cookies.update(COOKIES)
 
+# Corrected location IDs matching the website's backend structure
 LOCATIONS = [
-    {"locId": "1", "locName": "Crystal Sports"},
-    {"locId": "2", "locName": "Crystal Sports G"}
+    {"locId": "LOC001", "locName": "Crystal Sports"},
+    {"locId": "LOC002", "locName": "Crystal Sports G"}
 ]
 
 def collect_free_slots():
