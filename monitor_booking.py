@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Crystal Sports court-availability monitor — GitHub Actions version.
-Scans today and the next 14 days for available ('ว่าง') slots.
+Scans today + next 14 days by fetching the server-rendered booking pages.
 """
 
 import json
@@ -16,7 +16,7 @@ from bs4 import BeautifulSoup
 
 # ============== CONFIG ==============
 BASE_URL = "https://crystalsports-booking.kegroup.co.th/booking"
-DAYS_AHEAD = 15  # Scans today (0) + the next 14 days (1 to 14)
+DAYS_AHEAD = 15  # Today + 14 days ahead
 
 # Force Thailand Timezone (UTC+7)
 TZ_THAI = timezone(timedelta(hours=7))
@@ -45,7 +45,6 @@ session.headers.update({
 if COOKIES:
     session.cookies.update(COOKIES)
 
-# Define known locations based on the UI branches
 LOCATIONS = [
     {"locId": "1", "locName": "Crystal Sports"},
     {"locId": "2", "locName": "Crystal Sports G"}
@@ -83,17 +82,29 @@ def collect_free_slots():
 
             soup = BeautifulSoup(resp.text, "html.parser")
             
-            # Search for any HTML elements containing availability text "ว่าง"
+            # Search for any elements containing "ว่าง" (available)
+            # This catches time cards or badge counters like "ว่าง 3"
             for element in soup.find_all(True):
                 text = element.get_text(strip=True)
                 
-                if "ว่าง" in text and any(f"{h:02d}:00" in text for h in range(24)):
+                if "ว่าง" in text:
+                    # Look for time patterns like HH:00 nearby or inside the text
                     time_name = None
-                    for token in text.split():
+                    for token in text.replace("\n", " ").split():
                         if ":" in token and len(token) >= 5:
-                            time_name = token[:5]
-                            break
+                            clean_token = token[:5]
+                            if clean_token[:2].isdigit():
+                                time_name = clean_token
+                                break
                     
+                    # If time isn't embedded directly in the badge, look at parent/sibling text
+                    if not time_name:
+                        parent_text = element.parent.get_text(strip=True) if element.parent else ""
+                        for token in parent_text.split():
+                            if ":" in token and len(token) >= 5 and token[:2].isdigit():
+                                time_name = token[:5]
+                                break
+
                     if not time_name:
                         continue
 
@@ -111,7 +122,7 @@ def collect_free_slots():
                     key = f"{date_str}|{loc_name}|Court|{time_name}"
                     free[key] = f"{date_str} {time_name} — {loc_name} ({text})"
 
-    print(f"  [info] Scraped {len(free)} available slots across the next 14 days.")
+    print(f"  [info] Scraped {len(free)} available slots across the 15-day window.")
     return free
 
 
@@ -210,10 +221,4 @@ def main():
         send_email("Crystal Sports: NEW available slots!", body)
         send_push("Crystal Sports new slots!", body[:1000])
     else:
-        print("[info] No new slots since the last check.")
-
-    save_state(current_free)
-
-
-if __name__ == "__main__":
-    main()
+        print("[info] No new
