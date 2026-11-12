@@ -133,7 +133,8 @@ def send_email(subject, body):
         msg["To"] = EMAIL_TO
         
         context = ssl.create_default_context()
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+        with smtplib.SMTP() as server:
+            server.connect(SMTP_HOST, SMTP_PORT)
             server.ehlo()
             server.starttls(context=context)
             server.ehlo()
