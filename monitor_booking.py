@@ -1,91 +1,49 @@
-def collect_free_slots():
-    free = {}
-    now = datetime.now(TZ_THAI)
-    today_str = now.strftime("%Y-%m-%d")
-    now_hour_str = now.strftime("%H:00")
+def main():
+    print(f"[{datetime.now(TZ_THAI)}] Checking availability via Playwright...")
+    
+    # Check if secret is actually populated in the environment
+    auth_state_str = os.environ.get("PLAYWRIGHT_AUTH_STATE", "")
+    print(f"  [debug] PLAYWRIGHT_AUTH_STATE length: {len(auth_state_str)}")
+    if not auth_state_str:
+        print("  [error] PLAYWRIGHT_AUTH_STATE is completely empty! Check GitHub Actions Secrets mapping.")
+        return
 
-    auth_state_str = os.environ.get("PLAYWRIGHT_AUTH_STATE")
+    current_free = collect_free_slots()
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context()
-        
-        if auth_state_str:
+    previous_free = load_previous_state()
+    new_slots = {k: v for k, v in current_free.items() if k not in previous_free}
+
+    if new_slots:
+        grouped_slots = {}
+        for key in new_slots.keys():
+            parts = key.split("|")
+            if len(parts) == 4:
+                date_str, loc_name, status_label, time_name = parts
+                if date_str not in grouped_slots:
+                    grouped_slots[date_str] = []
+                slot_info = f"{time_name} — {loc_name} ({status_label})"
+                grouped_slots[date_str].append((time_name, slot_info))
+
+        body_lines = ["New Available Slots Found:\n"]
+        for date_str in sorted(grouped_slots.keys()):
+            slots_in_day = grouped_slots[date_str]
+            slots_in_day.sort(key=lambda x: x[0])
             try:
-                state_json = json.loads(auth_state_str)
-                cookies = state_json.get("cookies", [])
-                if cookies:
-                    context.add_cookies(cookies)
-                    print(f"  [info] Successfully injected {len(cookies)} authentication cookies.")
-            except Exception as e:
-                print(f"  [warn] Failed to parse PLAYWRIGHT_AUTH_STATE JSON: {e}")
+                date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+                day_of_week = date_obj.strftime("%A")
+            except Exception:
+                day_of_week = "Unknown Day"
 
-        page = context.new_page()
+            body_lines.append(f"{date_str} - {day_of_week}")
+            for time_name, slot_info in slots_in_day:
+                body_lines.append(f"- {slot_info}")
+            body_lines.append("")
 
-        # Test the first URL and inspect what cookies the browser actually holds
-        test_url = f"{BASE_URL}?date={today_str}&loc=LOC001&time=18&sel="
-        try:
-            page.goto(test_url, timeout=30000)
-            page.wait_for_load_state("domcontentloaded", timeout=15000)
-            print(f"  [debug] Final landed URL: {page.url}")
-            print(f"  [debug] Active cookies in browser: {[c['name'] for c in context.cookies()]}")
-        except Exception as e:
-            print(f"  [error] Initial navigation failed: {e}")
+        body = "\n".join(body_lines)
+        print(body)
+        send_email("Crystal Sports: NEW available slots!", body)
+        send_push("Crystal Sports new slots!", body[:1000])
+    else:
+        print("[info] No new slots since the last check.")
 
-        for day_offset in range(DAYS_AHEAD):
-            date_obj = now + timedelta(days=day_offset)
-            date_str = date_obj.strftime("%Y-%m-%d")
-            is_weekend = date_obj.weekday() >= 5
-
-            for loc in LOCATIONS:
-                loc_id = loc["locId"]
-                loc_name = loc["locName"]
-
-                target_url = f"{BASE_URL}?date={date_str}&loc={loc_id}&time=18&sel="
-
-                try:
-                    page.goto(target_url, timeout=30000)
-                    page.wait_for_load_state("domcontentloaded", timeout=15000)
-
-                    if "login" in page.url.lower():
-                        print(f"  [error] Session expired. Redirected to login for {loc_name} on {date_str}. Current URL: {page.url}")
-                        continue
-
-                    content = page.content()
-                    soup = BeautifulSoup(content, "html.parser")
-
-                    for element in soup.find_all(["button", "a", "div", "label", "span"]):
-                        text = element.get_text(" ", strip=True)
-                        if "ว่าง" not in text or len(text) > 40:
-                            continue
-
-                        match = re.search(r"\b(\d{2}:\d{2})\b", text)
-                        if not match:
-                            continue
-
-                        time_name = match.group(1)
-
-                        if date_str == today_str and time_name < now_hour_str:
-                            continue
-
-                        if is_weekend:
-                            if time_name < "11:00":
-                                continue
-                        else:
-                            if time_name < "17:00":
-                                continue
-
-                        avail_match = re.search(r"(ว่าง\s*\d*)", text)
-                        status_label = avail_match.group(1).strip() if avail_match else "ว่าง"
-
-                        key = f"{date_str}|{loc_name}|{status_label}|{time_name}"
-                        free[key] = f"{date_str} {time_name} — {loc_name} ({status_label})"
-
-                except Exception as e:
-                    print(f"  [warn] failed to fetch {loc_name} for {date_str}: {e}")
-                    continue
-
-        browser.close()
-
-    print(f"  [info] Scraped {len(free)} matching available slots across the 15-day window.")
-    return free
+    save_state(current_free)
