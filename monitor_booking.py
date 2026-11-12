@@ -66,7 +66,6 @@ def collect_free_slots():
             loc_id = loc["locId"]
             loc_name = loc["locName"]
 
-            # Fetch the booking page for this specific date and location
             params = {
                 "date": date_str,
                 "loc": loc_id
@@ -82,26 +81,14 @@ def collect_free_slots():
                 print(f"  [warn] failed to fetch {loc_name} for {date_str}: {e}")
                 continue
 
-            # Parse HTML content
             soup = BeautifulSoup(resp.text, "html.parser")
             
-            # Locate time slot elements and court status containers on the page
-            # Adjust selectors based on the site's live HTML elements
-            slot_cards = soup.find_all("div", class_="") # Scrapes time/slot blocks
-            
-            # Fallback text search across the page structure for available slots containing "ว่าง"
-            # Looking for time slots and associated court availability indicators
             for time_box in soup.find_all(lambda tag: tag.name in ["div", "button", "a"] and "ว่าง" in tag.text):
                 box_text = time_box.get_text(strip=True)
                 
-                # Extract time if present (e.g. "23:00" or similar pattern)
-                # If the box indicates availability ("ว่าง"), record it
                 if "ว่าง" in box_text:
-                    # Attempt to find parent or sibling time label
-                    parent = time_box.find_parent("div")
-                    time_name = "18:00" # Default/fallback if exact time element is nested
+                    time_name = "18:00"
                     
-                    # Try scanning children or nearby text for time format HH:00
                     for child in time_box.stripped_strings:
                         if ":" in child and len(child) <= 5:
                             time_name = child
@@ -110,7 +97,6 @@ def collect_free_slots():
                     if date_str == today_str and time_name < now_hour_str:
                         continue
                         
-                    # Filter for 17:00+ on Weekdays and 11:00+ on Weekends
                     if is_weekend:
                         if time_name < "11:00":
                             continue
@@ -151,3 +137,78 @@ def send_email(subject, body):
         context = ssl.create_default_context()
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
             server.starttls(context=context)
+            server.login(SMTP_USER, SMTP_PASSWORD)
+            server.sendmail(SMTP_USER, [EMAIL_TO], msg.as_string())
+        print("  [ok] email sent")
+    except Exception as e:
+        print(f"  [error] failed to send email: {e}")
+
+
+def send_push(title, message):
+    if not (NTFY_ENABLED and NTFY_TOPIC):
+        print("  [skip] push not configured")
+        return
+    try:
+        requests.post(
+            f"https://ntfy.sh/{NTFY_TOPIC}",
+            data=message.encode("utf-8"),
+            headers={"Title": title},
+            timeout=10,
+        )
+        print("  [ok] push notification sent")
+    except Exception as e:
+        print(f"  [error] failed to send push notification: {e}")
+
+
+def main():
+    print(f"[{datetime.now(TZ_THAI)}] Checking availability...")
+
+    try:
+        current_free = collect_free_slots()
+    except Exception as e:
+        print(f"[error] Could not fetch availability: {e}")
+        return
+
+    previous_free = load_previous_state()
+    new_slots = {k: v for k, v in current_free.items() if k not in previous_free}
+
+    if new_slots:
+        grouped_slots = {}
+        for key in new_slots.keys():
+            parts = key.split("|")
+            if len(parts) == 4:
+                date_str, loc_name, stadium_name, time_name = parts
+                if date_str not in grouped_slots:
+                    grouped_slots[date_str] = []
+                
+                slot_info = f"{time_name} — {loc_name} ({stadium_name})"
+                grouped_slots[date_str].append((time_name, slot_info))
+
+        body_lines = ["New Available Slots Found:\n"]
+        for date_str in sorted(grouped_slots.keys()):
+            slots_in_day = grouped_slots[date_str]
+            slots_in_day.sort(key=lambda x: x[0])
+            
+            try:
+                date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+                day_of_week = date_obj.strftime("%A")
+            except Exception:
+                day_of_week = "Unknown Day"
+            
+            body_lines.append(f"{date_str} - {day_of_week}")
+            for time_name, slot_info in slots_in_day:
+                body_lines.append(f"- {slot_info}")
+            body_lines.append("")
+
+        body = "\n".join(body_lines)
+        print(body)
+        send_email("Crystal Sports: NEW available slots!", body)
+        send_push("Crystal Sports new slots!", body[:1000])
+    else:
+        print("[info] No new slots since the last check.")
+
+    save_state(current_free)
+
+
+if __name__ == "__main__":
+    main()
