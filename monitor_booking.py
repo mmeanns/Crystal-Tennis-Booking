@@ -83,12 +83,10 @@ def collect_free_slots():
             soup = BeautifulSoup(resp.text, "html.parser")
             
             # Search for any elements containing "ว่าง" (available)
-            # This catches time cards or badge counters like "ว่าง 3"
             for element in soup.find_all(True):
                 text = element.get_text(strip=True)
                 
                 if "ว่าง" in text:
-                    # Look for time patterns like HH:00 nearby or inside the text
                     time_name = None
                     for token in text.replace("\n", " ").split():
                         if ":" in token and len(token) >= 5:
@@ -97,7 +95,6 @@ def collect_free_slots():
                                 time_name = clean_token
                                 break
                     
-                    # If time isn't embedded directly in the badge, look at parent/sibling text
                     if not time_name:
                         parent_text = element.parent.get_text(strip=True) if element.parent else ""
                         for token in parent_text.split():
@@ -221,4 +218,10 @@ def main():
         send_email("Crystal Sports: NEW available slots!", body)
         send_push("Crystal Sports new slots!", body[:1000])
     else:
-        print("[info] No new
+        print("[info] No new slots since the last check.")
+
+    save_state(current_free)
+
+
+if __name__ == "__main__":
+    main()
