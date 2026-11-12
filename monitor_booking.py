@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Crystal Sports court-availability monitor — GitHub Actions Playwright version.
+Crystal Sports court-availability monitor — Playwright Headless version.
 """
 
 import json
@@ -11,6 +11,7 @@ import ssl
 from datetime import datetime, timedelta, timezone
 from email.mime.text import MIMEText
 from playwright.sync_api import sync_playwright
+from bs4 import BeautifulSoup
 
 BASE_URL = "https://crystalsports-booking.kegroup.co.th/booking"
 DAYS_AHEAD = 15
@@ -39,7 +40,6 @@ def collect_free_slots():
     today_str = now.strftime("%Y-%m-%d")
     now_hour_str = now.strftime("%H:00")
 
-    # Load session cookies/storage state passed from GitHub Secrets
     auth_state_str = os.environ.get("PLAYWRIGHT_AUTH_STATE")
     storage_state = json.loads(auth_state_str) if auth_state_str else None
 
@@ -68,7 +68,6 @@ def collect_free_slots():
                         continue
 
                     content = page.content()
-                    from bs4 import BeautifulSoup
                     soup = BeautifulSoup(content, "html.parser")
 
                     for element in soup.find_all(["button", "a", "div", "label", "span"]):
