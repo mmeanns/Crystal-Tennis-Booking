@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Crystal Sports court-availability monitor — GitHub Actions version.
-Scans today + next 14 days (15 days total) for available ('ว่าง') slots.
+Scans today + next 14 days (15 days total) with explicit domain cookie scoping.
 """
 
 import json
@@ -14,13 +14,14 @@ from email.mime.text import MIMEText
 
 import requests
 from bs4 import BeautifulSoup
+from requests.cookies import RequestsCookieJar
 
 # ============== CONFIG ==============
 BASE_URL = "https://crystalsports-booking.kegroup.co.th/booking"
 DAYS_AHEAD = 15  # Today + next 14 days
 
 TZ_THAI = timezone(timedelta(hours=7))
-COOKIES = json.loads(os.environ.get("BOOKING_COOKIES_JSON") or "{}")
+RAW_COOKIES = json.loads(os.environ.get("BOOKING_COOKIES_JSON") or "{}")
 
 EMAIL_ENABLED = True
 SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
@@ -45,8 +46,12 @@ session.headers.update({
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Referer": f"{BASE_URL}/",
 })
-if COOKIES:
-    session.cookies.update(COOKIES)
+
+# Explicitly bind cookies to the correct domain so requests sends them reliably
+cookie_jar = RequestsCookieJar()
+for name, value in RAW_COOKIES.items():
+    cookie_jar.set(name, value, domain="crystalsports-booking.kegroup.co.th", path="/")
+session.cookies = cookie_jar
 
 
 def collect_free_slots():
@@ -72,9 +77,9 @@ def collect_free_slots():
             }
 
             try:
-                resp = session.get(BASE_URL, params=params, timeout=20)
+                resp = session.get(BASE_URL, params=params, timeout=20, allow_redirects=True)
                 if resp.status_code == 401 or "login" in resp.url.lower():
-                    print(f"  [error] Session expired or unauthenticated for {loc_name} on {date_str}.")
+                    print(f"  [error] Unauthenticated for {loc_name} on {date_str}. Redirected to: {resp.url}")
                     continue
                 resp.raise_for_status()
             except Exception as e:
