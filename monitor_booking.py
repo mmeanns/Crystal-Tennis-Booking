@@ -18,7 +18,7 @@ DAYS_AHEAD = 15
 TZ_THAI = timezone(timedelta(hours=7))
 
 EMAIL_ENABLED = True
-SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
+SMTP_HOST = "smtp.gmail.com"
 
 _smtp_port_raw = os.environ.get("SMTP_PORT")
 SMTP_PORT = int(_smtp_port_raw) if _smtp_port_raw and _smtp_port_raw.strip().isdigit() else 587
@@ -133,10 +133,9 @@ def send_email(subject, body):
         msg["To"] = EMAIL_TO
         
         context = ssl.create_default_context()
-        with smtplib.SMTP() as server:
-            server.connect(SMTP_HOST, SMTP_PORT)
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
             server.ehlo()
-            server.starttls(context=context)
+            server.starttls(context=context, server_hostname=SMTP_HOST)
             server.ehlo()
             server.login(SMTP_USER, SMTP_PASSWORD)
             server.sendmail(SMTP_USER, [EMAIL_TO], msg.as_string())
