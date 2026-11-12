@@ -3,7 +3,7 @@ name: Monitor Crystal Sports
 on:
   schedule:
     - cron: '*/15 * * * *'  # Runs every 15 minutes
-  workflow_dispatch:        # Allows manual trigger
+  workflow_dispatch:        # Allows you to trigger it manually from GitHub
 
 jobs:
   run-monitor:
@@ -19,7 +19,11 @@ jobs:
 
       - name: Install dependencies
         run: |
+          python -m pip install --upgrade pip
           pip install requests beautifulsoup4 playwright
+
+      - name: Install Playwright Chromium browser
+        run: |
           playwright install chromium
 
       - name: Run availability monitor
