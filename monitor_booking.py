@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Crystal Sports court-availability monitor — GitHub Actions version.
-Scans today + next 14 days using correct location IDs (LOC001, LOC002).
+Includes correct query parameters (date, loc, time, sel) to render slots properly.
 """
 
 import json
@@ -45,7 +45,6 @@ session.headers.update({
 if COOKIES:
     session.cookies.update(COOKIES)
 
-# Corrected location IDs matching the website's backend structure
 LOCATIONS = [
     {"locId": "LOC001", "locName": "Crystal Sports"},
     {"locId": "LOC002", "locName": "Crystal Sports G"}
@@ -66,9 +65,12 @@ def collect_free_slots():
             loc_id = loc["locId"]
             loc_name = loc["locName"]
 
+            # Include required query parameters observed in browser requests
             params = {
                 "date": date_str,
-                "loc": loc_id
+                "loc": loc_id,
+                "time": "18",
+                "sel": ""
             }
             
             try:
@@ -83,7 +85,7 @@ def collect_free_slots():
 
             soup = BeautifulSoup(resp.text, "html.parser")
             
-            # Search for any elements containing "ว่าง" (available)
+            # Search for any elements containing availability text "ว่าง"
             for element in soup.find_all(True):
                 text = element.get_text(strip=True)
                 
