@@ -1,19 +1,14 @@
 #!/usr/bin/env python3
 """
 Crystal Sports court-availability monitor — GitHub Actions version.
-
-Reads configuration from environment variables (set as GitHub Secrets)
-instead of hardcoding them in the file, so you can safely commit this
-script to a public or private repo.
-
-See SETUP_GITHUB_ACTIONS.md for full setup steps.
+Updated for the new website workflow and "ว่าง" (available) status.
 """
 
 import json
 import os
 import smtplib
 import ssl
-from datetime import datetime, timedelta, timezone  # Added timezone here
+from datetime import datetime, timedelta, timezone
 from email.mime.text import MIMEText
 
 import requests
@@ -22,10 +17,9 @@ import requests
 BASE_URL = "https://crystalsports-booking.kegroup.co.th/booking"
 DAYS_AHEAD = 15
 
-# Force Thailand Timezone (UTC+7) so GitHub Actions doesn't use yesterday's date
+# Force Thailand Timezone (UTC+7)
 TZ_THAI = timezone(timedelta(hours=7))
 
-# Optional login cookie, as a JSON string env var, e.g. {"PHPSESSID": "abc"}
 COOKIES = json.loads(os.environ.get("BOOKING_COOKIES_JSON") or "{}")
 
 EMAIL_ENABLED = True
@@ -43,15 +37,16 @@ STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "known_fre
 
 session = requests.Session()
 session.headers.update({
-    "User-Agent": "Mozilla/5.0 (booking-monitor script)",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "X-Requested-With": "XMLHttpRequest",
+    "Referer": f"{BASE_URL}/",
 })
 if COOKIES:
     session.cookies.update(COOKIES)
 
 
 def api_get(action):
-    url = f"{BASE_URL}api_helper.php?action={action}"
+    url = f"{BASE_URL}/api_helper.php?action={action}"
     resp = session.get(url, timeout=20)
     resp.raise_for_status()
     try:
@@ -60,9 +55,8 @@ def api_get(action):
         return json.loads(resp.text)
 
 
-def api_post_available(date_str, stadium_id, loc_id):
-    url = f"{BASE_URL}api_helper.php?action=getAvailableStadiums"
-    payload = {"date": date_str, "stadiumId": stadium_id, "locId": loc_id}
+def api_post(action, payload):
+    url = f"{BASE_URL}/api_helper.php?action={action}"
     resp = session.post(url, json=payload, timeout=20)
     resp.raise_for_status()
     try:
@@ -84,7 +78,6 @@ def collect_free_slots():
     locations = get_locations()
     stadiums = get_stadiums()
 
-    # CRITICAL FIX: Explicitly use Thailand time instead of GitHub server time
     now = datetime.now(TZ_THAI)
     today_str = now.strftime("%Y-%m-%d")
     now_hour_str = now.strftime("%H:00")
@@ -92,31 +85,40 @@ def collect_free_slots():
     for day_offset in range(DAYS_AHEAD):
         date_obj = now + timedelta(days=day_offset)
         date_str = date_obj.strftime("%Y-%m-%d")
-        
-        # Determine if it's a weekday or weekend (5 = Saturday, 6 = Sunday)
         is_weekend = date_obj.weekday() >= 5
 
         for loc in locations:
             loc_id = loc.get("locId")
             loc_name = loc.get("locName", f"loc{loc_id}")
+            
             courts = [s for s in stadiums if str(s.get("locId")) == str(loc_id)]
 
             for court in courts:
                 stadium_id = court.get("stadiumId")
                 stadium_name = court.get("stadiumName", f"court{stadium_id}")
+                
                 try:
-                    slots = api_post_available(date_str, stadium_id, loc_id)
+                    payload = {"date": date_str, "stadiumId": stadium_id, "locId": loc_id}
+                    slots = api_post("getAvailableStadiums", payload)
                 except Exception as e:
                     print(f"  [warn] failed {loc_name}/{stadium_name} {date_str}: {e}")
                     continue
+
                 if isinstance(slots, str):
-                    slots = json.loads(slots)
+                    try:
+                        slots = json.loads(slots)
+                    except Exception:
+                        slots = []
+
+                if not isinstance(slots, list):
+                    continue
 
                 for slot in slots:
                     if str(slot.get("stadiumId")) != str(stadium_id):
                         continue
+                    
                     time_name = slot.get("timeName", "")
-                    reserve_status = str(slot.get("reservestatus", ""))
+                    reserve_status = str(slot.get("reservestatus") or slot.get("reserveStatus") or "")
                     
                     if date_str == today_str and time_name < now_hour_str:
                         continue
@@ -129,9 +131,11 @@ def collect_free_slots():
                         if time_name < "17:00":
                             continue
 
-                    if reserve_status != "1":
+                    # "0" typically indicates free/available (ว่าง), whereas "1" indicates booked (เต็ม)
+                    if reserve_status == "0" or slot.get("status") == "available":
                         key = f"{date_str}|{loc_name}|{stadium_name}|{time_name}"
-                        free[key] = f"{date_str} {time_name} \u2014 {loc_name} / {stadium_name}"
+                        free[key] = f"{date_str} {time_name} — {loc_name} / {stadium_name}"
+                        
     return free
 
 
@@ -194,14 +198,10 @@ def main():
         print(f"[error] Could not fetch availability: {e}")
         return
 
-    # Load previously seen slots from the last execution
     previous_free = load_previous_state()
-
-    # Identify slots that are in current_free but NOT in previous_free
     new_slots = {k: v for k, v in current_free.items() if k not in previous_free}
 
     if new_slots:
-        # Group only the NEW slots by date
         grouped_slots = {}
         for key in new_slots.keys():
             parts = key.split("|")
@@ -213,7 +213,6 @@ def main():
                 slot_info = f"{time_name} — {loc_name} ({stadium_name})"
                 grouped_slots[date_str].append((time_name, slot_info))
 
-        # Build the text notification body chronologically
         body_lines = ["New Available Slots Found:\n"]
         for date_str in sorted(grouped_slots.keys()):
             slots_in_day = grouped_slots[date_str]
@@ -228,17 +227,15 @@ def main():
             body_lines.append(f"{date_str} - {day_of_week}")
             for time_name, slot_info in slots_in_day:
                 body_lines.append(f"- {slot_info}")
-            body_lines.append("") # Spacer
+            body_lines.append("")
 
         body = "\n".join(body_lines)
-        
         print(body)
         send_email("Crystal Sports: NEW available slots!", body)
         send_push("Crystal Sports new slots!", body[:1000])
     else:
         print("[info] No new slots since the last check.")
 
-    # Save the current state so these slots are considered "known" next time
     save_state(current_free)
 
 
