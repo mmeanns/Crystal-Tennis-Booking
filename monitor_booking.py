@@ -20,7 +20,6 @@ TZ_THAI = timezone(timedelta(hours=7))
 EMAIL_ENABLED = True
 SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
 
-# Safely parse SMTP_PORT, falling back to 587 if empty or missing
 _smtp_port_raw = os.environ.get("SMTP_PORT")
 SMTP_PORT = int(_smtp_port_raw) if _smtp_port_raw and _smtp_port_raw.strip().isdigit() else 587
 
@@ -65,7 +64,7 @@ def collect_free_slots():
 
                 try:
                     page.goto(target_url, timeout=30000)
-                    page.wait_for_load_state("networkidle", timeout=10000)
+                    page.wait_for_load_state("domcontentloaded", timeout=15000)
 
                     if "login" in page.url.lower():
                         print(f"  [error] Session expired. Redirected to login for {loc_name} on {date_str}.")
