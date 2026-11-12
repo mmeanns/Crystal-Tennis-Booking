@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Crystal Sports court-availability monitor — GitHub Actions version.
-Updated to scrape and parse the new server-rendered booking HTML pages.
+Scans today and the next 14 days for available ('ว่าง') slots.
 """
 
 import json
@@ -16,7 +16,7 @@ from bs4 import BeautifulSoup
 
 # ============== CONFIG ==============
 BASE_URL = "https://crystalsports-booking.kegroup.co.th/booking"
-DAYS_AHEAD = 15
+DAYS_AHEAD = 15  # Scans today (0) + the next 14 days (1 to 14)
 
 # Force Thailand Timezone (UTC+7)
 TZ_THAI = timezone(timedelta(hours=7))
@@ -45,7 +45,7 @@ session.headers.update({
 if COOKIES:
     session.cookies.update(COOKIES)
 
-# Define known locations based on the new UI branches
+# Define known locations based on the UI branches
 LOCATIONS = [
     {"locId": "1", "locName": "Crystal Sports"},
     {"locId": "2", "locName": "Crystal Sports G"}
@@ -74,7 +74,7 @@ def collect_free_slots():
             try:
                 resp = session.get(BASE_URL, params=params, timeout=20)
                 if resp.status_code == 401:
-                    print(f"  [error] 401 Unauthorized for {loc_name} on {date_str}. Check your session cookies.")
+                    print(f"  [error] 401 Unauthorized for {loc_name} on {date_str}. Check session cookies.")
                     continue
                 resp.raise_for_status()
             except Exception as e:
@@ -83,20 +83,24 @@ def collect_free_slots():
 
             soup = BeautifulSoup(resp.text, "html.parser")
             
-            for time_box in soup.find_all(lambda tag: tag.name in ["div", "button", "a"] and "ว่าง" in tag.text):
-                box_text = time_box.get_text(strip=True)
+            # Search for any HTML elements containing availability text "ว่าง"
+            for element in soup.find_all(True):
+                text = element.get_text(strip=True)
                 
-                if "ว่าง" in box_text:
-                    time_name = "18:00"
-                    
-                    for child in time_box.stripped_strings:
-                        if ":" in child and len(child) <= 5:
-                            time_name = child
+                if "ว่าง" in text and any(f"{h:02d}:00" in text for h in range(24)):
+                    time_name = None
+                    for token in text.split():
+                        if ":" in token and len(token) >= 5:
+                            time_name = token[:5]
                             break
+                    
+                    if not time_name:
+                        continue
 
                     if date_str == today_str and time_name < now_hour_str:
                         continue
                         
+                    # Filter for 17:00+ on Weekdays and 11:00+ on Weekends
                     if is_weekend:
                         if time_name < "11:00":
                             continue
@@ -105,8 +109,9 @@ def collect_free_slots():
                             continue
 
                     key = f"{date_str}|{loc_name}|Court|{time_name}"
-                    free[key] = f"{date_str} {time_name} — {loc_name} (Available: {box_text})"
+                    free[key] = f"{date_str} {time_name} — {loc_name} ({text})"
 
+    print(f"  [info] Scraped {len(free)} available slots across the next 14 days.")
     return free
 
 
